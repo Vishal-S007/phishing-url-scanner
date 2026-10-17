@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>URL Phishing Scanner</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #171d26;
+    --line: #273040;
+    --text: #e6edf3;
+    --muted: #8b97a7;
+    --accent: #4ea1ff;
+    --safe: #3fb950;
+    --warn: #d29922;
+    --danger: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    line-height: 1.5; padding: 2rem 1rem;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  .sub { color: var(--muted); margin: 0 0 1.5rem; font-size: .85rem; }
+  .row { display: flex; gap: .5rem; }
+  input {
+    flex: 1; background: var(--panel); border: 1px solid var(--line);
+    color: var(--text); padding: .7rem .8rem; border-radius: 6px;
+    font-family: inherit; font-size: .9rem;
+  }
+  input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  button {
+    background: var(--accent); color: #0b1016; border: 0; cursor: pointer;
+    padding: 0 1.2rem; border-radius: 6px; font-family: inherit; font-weight: 600;
+  }
+  button:hover { filter: brightness(1.1); }
+  .verdict {
+    margin-top: 1.5rem; padding: 1rem; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--panel);
+    display: none;
+  }
+  .verdict.show { display: block; }
+  .badge { font-weight: 700; font-size: 1.1rem; }
+  .score { color: var(--muted); font-size: .85rem; }
+  .bar { height: 8px; background: var(--line); border-radius: 4px; margin: .7rem 0; overflow: hidden; }
+  .bar > div { height: 100%; transition: width .3s; }
+  table { width: 100%; border-collapse: collapse; margin-top: .8rem; font-size: .85rem; }
+  th, td { text-align: left; padding: .45rem .5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  td.pts { text-align: right; color: var(--warn); white-space: nowrap; }
+  .clean { color: var(--safe); padding: .8rem .5rem; }
+  .err { color: var(--danger); margin-top: 1rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>URL Phishing Scanner</h1>
+  <p class="sub">Paste a link. Each signal below adds to a risk score. Nothing is sent anywhere but your own server.</p>
+
+  <div class="row">
+    <input id="url" type="text" placeholder="https://example.com/login" autocomplete="off">
+    <button id="go">Scan</button>
+  </div>
+
+  <div id="err" class="err"></div>
+
+  <div id="out" class="verdict">
+    <span id="badge" class="badge"></span>
+    <span id="scoreText" class="score"></span>
+    <div class="bar"><div id="barFill"></div></div>
+    <div id="detail"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+const COLOR = {
+  "Likely Phishing": "var(--danger)",
+  "Suspicious":      "var(--warn)",
+  "Probably Safe":   "var(--safe)",
+};
+
+async function scan() {
+  const url = $("url").value.trim();
+  $("err").textContent = "";
+  if (!url) { $("err").textContent = "Enter a URL first."; return; }
+
+  try {
+    const res = await fetch("/api/scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url })
+    });
+    const data = await res.json();
+    if (!res.ok) { $("err").textContent = data.error || "Request failed."; return; }
+    render(data);
+  } catch (e) {
+    $("err").textContent = "Could not reach the server.";
+  }
+}
+
+function render(data) {
+  const color = COLOR[data.verdict] || "var(--muted)";
+  $("badge").textContent = data.verdict;
+  $("badge").style.color = color;
+  $("scoreText").textContent = "  risk score: " + data.score;
+
+  const pct = Math.min(data.score, 100);
+  $("barFill").style.width = pct + "%";
+  $("barFill").style.background = color;
+
+  if (data.signals.length === 0) {
+    $("detail").innerHTML = '<div class="clean">No risk signals triggered.</div>';
+  } else {
+    let rows = data.signals.map(s =>
+      `<tr><td><strong>${s.name}</strong><br><span style="color:var(--muted)">${s.detail}</span></td>`
+      + `<td class="pts">+${s.points}</td></tr>`
+    ).join("");
+    $("detail").innerHTML =
+      `<table><thead><tr><th>Signal</th><th style="text-align:right">Points</th></tr></thead>`
+      + `<tbody>${rows}</tbody></table>`;
+  }
+  $("out").classList.add("show");
+}
+
+$("go").addEventListener("click", scan);
+$("url").addEventListener("keydown", e => { if (e.key === "Enter") scan(); });
+</script>
+</body>
+</html>
